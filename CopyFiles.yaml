@@ -1,0 +1,28 @@
+---
+- name: Copy multiple files 
+  hosts: servers
+  become: true
+  tasks:
+    - name: Copy multiple files
+      copy:
+        src: "{{ item.src }}"
+        dest: "{{ item.dest }}"
+        owner: anisble
+        group: ansible
+        mode: 0644
+      with_items:
+        - src: /home/ansible/test
+          dest: /var/www/html/test
+        - src: /home/ansible/test1
+          dest: /var/www/html/test1
+        - src: /home/ansible/test2
+          dest: /var/www/html/test2
+        - src: /home/ansible/test3
+          dest: /var/www/html/test3
+        - src: /home/ansible/test4
+          dest: /var/www/html/test4
+        - src: /home/ansible/test5
+          dest: /var/www/html/test5
+        - src: /home/ansible/index.html
+          dest: /var/www/html/index.html
+...
