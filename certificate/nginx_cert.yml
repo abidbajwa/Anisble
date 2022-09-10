@@ -1,0 +1,53 @@
+---
+- hosts: repo1
+  become: true
+  tasks:
+    - name: Papulate Service Facts
+      service_facts:
+    - name: See the Service <nginx> facts as they are"
+      debug:
+        msg: "{{ ansible_facts.services['nginx.service'].state }}"
+      register: ngnix_service_status
+    - name: Debug output
+      debug:
+        var: ngnix_service_status
+    - name: Check website path details
+      shell: nginx -T | grep ssl_certificate | awk '{print $NF}' | grep '.crt\|.pem' | tr "; " " " | sed 's/\"//g' | awk '{ gsub(/ /,""); print }'
+      register: path_output
+      when: ngnix_service_status.msg == "running"
+    - name: Print path details
+      debug:
+        var: path_output
+    - name: Find subject of SSL
+      shell: openssl x509 -noout -subject -in "{{ item }}"
+      with_items: "{{ path_output.stdout_lines }}"
+      register: cert_subject
+      ignore_errors: true
+    - name: Dump <cert_subject>
+      debug:
+        var: cert_subject
+    - name: Find exact certificate that need to replace
+      set_fact:
+        certificate_path: "{{ certificate_path|default([]) + [({'src_path': item.item, 'subject_detail': item.stdout})] }}"
+      with_items: "{{ cert_subject.results | json_query('[*]')}}"
+    - name: Dump << certificate_path >> details
+      debug: var=certificate_path
+    - name: Copy <<.CRT>> Certificate file on Server
+      copy:
+        src: /home/admin/certificate.crt
+        dest: "{{ item.src_path }}"
+        backup: true
+        owner: root
+        group: root
+        mode: 0600
+      with_items: "{{ certificate_path }}"
+      ignore_errors: true
+      when: item.subject_detail.find('ibexglobal.com') != -1 and item.src_path.find('.crt') != -1
+    - name: Copy <<.PEM>> Certificate file on Server
+      copy:
+        src: /home/admin/certificate.crt
+        dest: "{{ item.src_path }}"
+        backup: true
+      with_items: "{{ certificate_path }}"
+      ignore_errors: true
+      when: item.subject_detail.find('ibexglobal.com') != -1 and item.src_path.find('.pem') != -1

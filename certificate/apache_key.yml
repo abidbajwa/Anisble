@@ -1,0 +1,50 @@
+---
+- hosts: all
+  become: true
+  tasks:
+    - name: Papulate Service Facts
+      service_facts:
+    - name: See the Service <httpd> facts as they are"
+      debug:
+        msg: "{{ ansible_facts.services['httpd.service'].state }}"
+      register: http_service_status
+    - name: Debug output
+      debug:
+        var: http_service_status
+    - name: Check website path details
+      shell: httpd -S | grep -e "port 443" | awk '{print $NF}' | awk -F ":" '{print $1}' | tr "(" " " |  awk '{ gsub(/ /,""); print }'
+      register: path_output
+      when: http_service_status.msg == "running"
+    - name: Print path details
+      debug:
+        var: path_output.stdout_lines
+    - name: Fetch SSL certificate path details
+      shell: |
+        grep -i -r SSLCertificateKeyFile "{{ item }}" | awk '{print $NF}'
+      with_items: "{{ path_output.stdout_lines }}"
+      ignore_errors: true
+      register: key_path
+    - name: Print path details
+      debug:
+        var: key_path
+    - name: Find Key STD ID
+      shell: openssl rsa -noout -modulus -in "{{ item.stdout }}" | openssl md5
+      with_items: "{{ key_path.results }}"
+      loop_control:
+        label: "{{ item.stdout }}"
+      ignore_errors: true
+      register: key_std
+    - name: Find exact certificate that need to replace
+      set_fact:
+        certificate_key_path: "{{ certificate_key_path|default([]) + [({'src_path': item.item.stdout, 'key_detail': item.stdout})] }}"
+      with_items: "{{ key_std.results | json_query('[*]')}}"
+    - name: Dump << Key_path >> details
+      debug: var=certificate_key_path
+    - name: Copy <<.key>> Certificate file on Server
+      copy:
+        src: /home/admin/certificate.key
+        dest: "{{ item.src_path }}"
+        backup: true
+      with_items: "{{ certificate_key_path }}"
+      ignore_errors: true
+      when: item.key_detail.find('d0f5a26c30147bd64a6a1072d0848648') != -1
